@@ -11,7 +11,7 @@
 # %%
 import datetime
 import time
-
+from shapely.geometry import box
 import ee
 import geopandas as gpd
 import numpy as np
@@ -19,7 +19,7 @@ import numpy as np
 # from tqdm import tqdm
 
 # Kruskamp stuff for getting aoi files
-from nfkruska.my_stuff import *
+from pykruser.pykruser import *
 
 ee.Initialize()
 # %%
@@ -79,6 +79,26 @@ feature = big_sur_aoi.__geo_interface__["features"][0]
 ee_aoi_feat = ee.Feature(feature)
 # create feature collection
 ee_aoi_fc = ee.FeatureCollection(ee_aoi_feat)
+# %%
+aphis_data_dir = Path("Q:/Shared drives/Data/Raster/Regional/SOD_CA/0030m")
+host_comp_ras_file = aphis_data_dir / "total_host_comp.tif"
+
+with rasterio.open(host_comp_ras_file) as src:
+    img_crs = src.crs
+    img_bounds = src.bounds
+
+img_bounds = gpd.GeoDataFrame(
+    {"id": 1, "geometry": [box(*img_bounds)]}, crs=img_crs
+).to_crs("EPSG:4326")
+# img_bounds = img_bounds.to_crs(epsg=4326)
+feature = img_bounds.__geo_interface__["features"][0]
+ee_aoi_feat = ee.Feature(feature)
+# create feature collection
+ee_aoi_fc = ee.FeatureCollection(ee_aoi_feat)
+
+
+# %%
+
 
 """USE EXISTING GEE ASSET"""
 # ee_aoi_fc = (ee.FeatureCollection("TIGER/2016/States")
