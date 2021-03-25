@@ -13,13 +13,11 @@
 import rasterio
 from rasterio.merge import merge
 from pathlib import Path
-from tqdm.autonotebook import tqdm
+from tqdm import tqdm
 import numpy as np
 
 # %%
-
-
-def stack_weather_coefs(src_files, dst_file):
+def stack_rasters(src_files, dst_file):
     with rasterio.open(src_files[0]) as src:
         profile = src.profile
         n_bands = src.count
@@ -37,7 +35,6 @@ def stack_weather_coefs(src_files, dst_file):
 
     return None
 
-
 # %%
 
 src_dir = Path("Q:/My Drive/PoPS_weather_data")
@@ -46,32 +43,40 @@ if not dst_dir.exists():
     dst_dir.mkdir(parents=True)
 
 coef_types = ["prcp_coef", "temp_coef"]
-coef_file_dict = {}
-for coef_type in coef_types:
-    coef_file_dict[coef_type] = list(src_dir.glob("*{}*.tif".format(coef_type)))
-coef_file_dict
 
 # %%
-years = [x.stem.split("_")[0] for x in coef_file_dict[coef_types[0]]]
+all_tif_files = list(src_dir.glob("*.tif"))
+years = [x.stem.split("_")[0] for x in all_tif_files]
 years = np.unique(years)
 years
 # %%
 
-for coef_type, tif_files in coef_file_dict.items():
-    for year in tqdm(years, desc="merging {} files".format(coef_type)):
-        year_files = [x for x in tif_files if x.match("*{}*".format(year))]
-        dst_path = dst_dir / "{}_{}_coef.tif".format(year, coef_type)
-        # print(dst_path)
-        tmp = merge(year_files, dst_path=dst_path, dst_kwds={"compress": "lzw"})
-
-
-
-# # %%
-# dst_prcp_file = dst_dir / "prcp_stack.tif"
-# dst_temp_file = dst_dir / "temp_stack.tif"
-# # %%
-# stack_weather_coefs(prcp_files, dst_prcp_file)
-# stack_weather_coefs(temp_files, dst_temp_file)
-# # %%
-
+with tqdm(
+    total=(len(years) * len(coef_types)), desc="merging yearly coef files") as pbar:
+    for coef_type in coef_types:
+        for year in years:
+            dst_path = dst_dir / "{}_{}_coef.tif".format(year, coef_type)
+            if dst_path.exists():
+                pbar.update(1)
+                continue
+            tif_files = list(src_dir.glob("{}*{}*.tif".format(year, coef_type)))
+            try:
+                tmp = merge(
+                    tif_files,
+                    dst_path=dst_path,
+                    dst_kwds={
+                        "compress": "lzw",
+                        "BIGTIFF": "YES"
+                    })
+            except:
+                print("issue with {}".format(dst_path.stem))
+            pbar.update(1)
+# %%
+for coef_type in tqdm(coef_types, desc="stacking coef files"):
+    tif_files = list(dst_dir.glob("*{}*.tif".format(coef_type)))
+    dst_path = dst_dir / "{}_stack.tif".format(coef_type)
+    print(dst_path)
+    if dst_path.exists():
+        continue
+    stack_rasters(tif_files, dst_path)
 # %%
