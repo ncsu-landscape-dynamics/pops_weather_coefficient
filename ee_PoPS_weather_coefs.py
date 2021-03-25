@@ -10,24 +10,29 @@
 # ======================================================================================
 # %%
 import datetime
+from pathlib import Path
 import time
-from shapely.geometry import box
+
 import ee
 import geopandas as gpd
 import numpy as np
+import rasterio
+from shapely.geometry import box
 
 # from tqdm import tqdm
 
-# Kruskamp stuff for getting aoi files
-from pykruser.pykruser import *
-
 ee.Initialize()
 # %%
+
 """VARIABLES TO BE SET BY USER"""
+# for GEE export and analysis
+output_scale = 100
+# used in export file to name uniquely id files
+proj_id = "sod_ca"
 # daymet starts on 1980-01-01 and PRISM starts on 1981-01-01
-start_year = 2006
+start_year = 2005
 # NOTE: end_year is EXCLUSIVE
-end_year = 2016
+end_year = 2019
 
 # time step for model
 # options: ["weekly", "monthly"]
@@ -56,41 +61,42 @@ output_folder = "PoPS_weather_data"
 # options: ["Late Blight", "SOD", "SLF"]
 pest_or_path = "SOD"
 
-# adjust GEE pixel limit for export and analysis
+# adjust GEE pixel limit for export
 max_pix = 1e10
 
-# for GEE export and analysis
-output_scale = 100
+# set the bounds of the AOI and the CRS of output from an existing raster.
+ref_raster_extent_file = Path(
+    "Q:/Shared drives/Data/Raster/Regional/SOD_CA/0030m/total_host_comp.tif"
+)
+
 # %%
 """ SET AOI"""
-
-"""GET A LOCAL GEOFILE TO USE AS AOI"""
 # read the local file
-ls_scenes = gpd.read_file(CH1_GPKG, layer="WRS2_scenes_2")
-# reproject
-# NOTE: must be 4236!
-ls_scenes = ls_scenes.to_crs(epsg=4326)
-# limit to single feature
-# NOTE: I *think* it needs to be a single feature, or else you can use unary_union() to
-# union features together into one big feature
-big_sur_aoi = ls_scenes[(ls_scenes["PATH"] == 43) & (ls_scenes["ROW"] == 35)]
-# must use __geo_interface__ to pass feature to EE.
-feature = big_sur_aoi.__geo_interface__["features"][0]
-ee_aoi_feat = ee.Feature(feature)
-# create feature collection
-ee_aoi_fc = ee.FeatureCollection(ee_aoi_feat)
-# %%
-aphis_data_dir = Path("Q:/Shared drives/Data/Raster/Regional/SOD_CA/0030m")
-host_comp_ras_file = aphis_data_dir / "total_host_comp.tif"
+# NOTE: CRS must be 4236 for to pass to CEE
+# aoi_gdf = gpd.read_file(CH1_GPKG, layer="WRS2_scenes_2")
+# img_crs = aoi_gdf.crs
+# aoi_gdf = aoi_gdf.to_crs(epsg=4326)
 
-with rasterio.open(host_comp_ras_file) as src:
+# limit to single feature
+# NOTE: I *think* it needs to be a single feature, or else you can use unary_union()
+# to union features together into one big feature.
+# aoi_gdf = aoi_gdf[(aoi_gdf["PATH"] == 43) & (aoi_gdf["ROW"] == 35)]
+# must use __geo_interface__ to pass feature to EE.
+# feature = aoi_gdf.__geo_interface__["features"][0]
+# ee_aoi_feat = ee.Feature(feature)
+# create feature collection
+# ee_aoi_fc = ee.FeatureCollection(ee_aoi_feat)
+# %%
+
+
+with rasterio.open(ref_raster_extent_file) as src:
     img_crs = src.crs
     img_bounds = src.bounds
+    # img_transform = src.transform
 
 img_bounds = gpd.GeoDataFrame(
     {"id": 1, "geometry": [box(*img_bounds)]}, crs=img_crs
 ).to_crs("EPSG:4326")
-# img_bounds = img_bounds.to_crs(epsg=4326)
 feature = img_bounds.__geo_interface__["features"][0]
 ee_aoi_feat = ee.Feature(feature)
 # create feature collection
@@ -511,8 +517,8 @@ year_list = range(start_year, end_year)
 for y in year_list:
     print("processing year {}".format(y))
     date_list = create_date_list(y, "weekly")
-    temp_file_name = "{}_temp_coef_{}m".format(y, output_scale)
-    prcp_file_name = "{}_prcp_coef_{}m".format(y, output_scale)
+    temp_file_name = "{}_temp_coef_{}_{}m".format(y, proj_id, output_scale)
+    prcp_file_name = "{}_prcp_coef_{}_{}m".format(y, proj_id, output_scale)
     for i in range(len(date_list) - 1):
         date_1 = date_list[i]
         date_2 = date_list[(i + 1)]
@@ -541,6 +547,9 @@ for y in year_list:
             region=ee_aoi_bounds,
             scale=output_scale,
             maxPixels=max_pix,
+            crs=img_crs,
+            fileDimensions=2048,
+            # crsTransform=img_transform,
         )
         tasks.start()
         task_status_list.append(tasks.list()[0])
@@ -553,6 +562,9 @@ for y in year_list:
             region=ee_aoi_bounds,
             scale=output_scale,
             maxPixels=max_pix,
+            crs=img_crs,
+            fileDimensions=2048,
+            # crsTransform=img_transform,
         )
         tasks.start()
         task_status_list.append(tasks.list()[0])
