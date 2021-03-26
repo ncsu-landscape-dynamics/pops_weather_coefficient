@@ -551,6 +551,9 @@ for y in year_list:
             else:
                 prcp_coef_stack = prcp_coef_stack.addBands(prcp)
 
+    # TODO: scale data to int to save space on export. It may (?) allow for larger
+    # regions to be exported in single tif files.
+
     if temperature:
         tasks = ee.batch.Export.image.toDrive(
             image=temp_coef_stack,
